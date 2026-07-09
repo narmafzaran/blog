@@ -1,0 +1,6 @@
+{
+  "name": "Automotive Blog and Magazine",
+  "description": "یک مجله تخصصی خودرو همراه با اخبار، دستاوردهای جدید دنیای خودرو و پنل مدیریت و تنظیمات برای درج محتوا",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,95 @@
+@import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@100..900&family=JetBrains+Mono:wght@400;500&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Vazirmatn", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+/* Global resets for Persian/Arabic typography */
+.font-sans, [class*="font-sans"] {
+  letter-spacing: normal !important;
+  word-spacing: normal !important;
+}
+
+body {
+  font-feature-settings: "ss01", "ss02", "cv11";
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom Scrollbar for Frosted Dark Theme */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 99px;
+  backdrop-filter: blur(4px);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* Glassmorphism custom classes replaced with Solid Premium Editorial Panels */
+.glass-panel {
+  background-color: #111827; /* solid gray-900 */
+  border: 1px solid #1f2937; /* solid gray-800 */
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.glass-panel-heavy {
+  background-color: #0b0f19; /* deep rich solid dark gray */
+  border: 1px solid #1e293b; /* slate-800 */
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+
+/* Rich content styling */
+.markdown-body {
+  line-height: 1.8;
+  font-size: 1.05rem;
+}
+
+.markdown-body p {
+  margin-bottom: 1.25rem;
+  color: #cbd5e1; /* slate-300 */
+  text-align: justify;
+}
+
+.markdown-body h3 {
+  font-size: 1.4rem;
+  font-weight: 700;
+  margin-top: 2.5rem;
+  margin-bottom: 1.25rem;
+  color: #ffffff;
+  border-right: 4px solid #3b82f6; /* premium blue */
+  padding-right: 0.75rem;
+}
+
+.markdown-body h4 {
+  font-size: 1.2rem;
+  font-weight: 600;
+  margin-top: 1.75rem;
+  margin-bottom: 0.75rem;
+  color: #f1f5f9; /* slate-100 */
+}
+
+.markdown-body ul, .markdown-body ol {
+  margin-bottom: 1.25rem;
+  padding-right: 1.5rem;
+  list-style-type: disc;
+}
+
+.markdown-body li {
+  margin-bottom: 0.5rem;
+  color: #cbd5e1; /* slate-300 */
+}
+
