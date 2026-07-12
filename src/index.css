@@ -17,6 +17,12 @@ body {
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  background-color: #001224; /* Deeper variant of #001f3f for main canvas */
+}
+
+::selection {
+  background-color: rgba(234, 216, 177, 0.25); /* #ead8b1 */
+  color: #ffffff;
 }
 
 /* Custom Scrollbar for Frosted Dark Theme */
@@ -26,64 +32,63 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: rgba(0, 0, 0, 0.2);
+  background: #001224;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15);
+  background: rgba(106, 154, 176, 0.2); /* #6a9ab0 */
   border-radius: 99px;
-  backdrop-filter: blur(4px);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.3);
+  background: rgba(234, 216, 177, 0.4); /* #ead8b1 */
 }
 
 /* Glassmorphism custom classes replaced with Solid Premium Editorial Panels */
 .glass-panel {
-  background-color: #111827; /* solid gray-900 */
-  border: 1px solid #1f2937; /* solid gray-800 */
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  background-color: #001f3f; /* solid premium navy */
+  border: 1px solid rgba(106, 154, 176, 0.15); /* #6a9ab0 */
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.4);
 }
 
 .glass-panel-heavy {
-  background-color: #0b0f19; /* deep rich solid dark gray */
-  border: 1px solid #1e293b; /* slate-800 */
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  background-color: #001730; /* deep rich solid dark navy */
+  border: 1px solid rgba(234, 216, 177, 0.12); /* #ead8b1 border */
+  box-shadow: 0 12px 30px -4px rgba(0, 0, 0, 0.6);
 }
 
 /* Rich content styling */
 .markdown-body {
-  line-height: 1.8;
+  line-height: 1.85;
   font-size: 1.05rem;
 }
 
 .markdown-body p {
-  margin-bottom: 1.25rem;
+  margin-bottom: 1.4rem;
   color: #cbd5e1; /* slate-300 */
   text-align: justify;
 }
 
 .markdown-body h3 {
-  font-size: 1.4rem;
-  font-weight: 700;
+  font-size: 1.35rem;
+  font-weight: 900;
   margin-top: 2.5rem;
   margin-bottom: 1.25rem;
   color: #ffffff;
-  border-right: 4px solid #3b82f6; /* premium blue */
+  border-right: 4px solid #ead8b1; /* Premium Warm Cream border */
   padding-right: 0.75rem;
 }
 
 .markdown-body h4 {
-  font-size: 1.2rem;
-  font-weight: 600;
+  font-size: 1.15rem;
+  font-weight: 800;
   margin-top: 1.75rem;
   margin-bottom: 0.75rem;
   color: #f1f5f9; /* slate-100 */
 }
 
 .markdown-body ul, .markdown-body ol {
-  margin-bottom: 1.25rem;
+  margin-bottom: 1.4rem;
   padding-right: 1.5rem;
   list-style-type: disc;
 }

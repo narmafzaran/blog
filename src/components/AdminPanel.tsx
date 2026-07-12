@@ -16,13 +16,40 @@ import {
   Sliders,
   Zap,
   Newspaper,
-  Car
+  Car,
+  Tv,
+  Film,
+  Bold,
+  Italic,
+  Link as LinkIcon,
+  Code,
+  Table as TableIcon,
+  Quote as QuoteIcon,
+  List as ListIcon,
+  ListOrdered,
+  Heading2,
+  Heading3,
+  Minus,
+  Info,
+  HelpCircle,
+  UploadCloud
 } from 'lucide-react';
-import { Article, Comment, SiteSettings, CarSpecs } from '../types';
-import { saveArticle, deleteArticle, getAllComments, deleteComment, saveSiteSettings } from '../lib/firebase';
+import { Article, Comment, SiteSettings, CarSpecs, Video } from '../types';
+import { 
+  saveArticle, 
+  deleteArticle, 
+  getAllComments, 
+  deleteComment, 
+  saveSiteSettings,
+  getVideos,
+  saveVideo,
+  deleteVideo,
+  uploadImage
+} from '../lib/firebase';
 
 interface AdminPanelProps {
   articles: Article[];
+  videos: Video[];
   settings: SiteSettings;
   onRefreshAll: () => void;
   onClose: () => void;
@@ -37,13 +64,60 @@ const PRESET_IMAGES = [
   { name: 'آئودی لوکس خاکستری', url: 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&q=80&w=1200' }
 ];
 
-export default function AdminPanel({ articles, settings, onRefreshAll, onClose }: AdminPanelProps) {
-  const [passcode, setPasscode] = useState('');
+export default function AdminPanel({ articles, videos, settings, onRefreshAll, onClose }: AdminPanelProps) {
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authError, setAuthError] = useState('');
+  
+  // Captcha states
+  const [captchaSvg, setCaptchaSvg] = useState('');
+  const [captchaId, setCaptchaId] = useState('');
+  const [captchaAnswer, setCaptchaAnswer] = useState('');
+  const [loadingCaptcha, setLoadingCaptcha] = useState(false);
+
+  // Load CAPTCHA challenge from server
+  const loadCaptcha = async () => {
+    setLoadingCaptcha(true);
+    try {
+      const res = await fetch('/api/admin/captcha');
+      if (res.ok) {
+        const data = await res.json();
+        setCaptchaSvg(data.svg);
+        setCaptchaId(data.id);
+        setCaptchaAnswer('');
+      }
+    } catch (err) {
+      console.error('Error loading captcha:', err);
+    } finally {
+      setLoadingCaptcha(false);
+    }
+  };
+
+  // Load captcha on initial mount
+  useEffect(() => {
+    if (!isAuthenticated) {
+      loadCaptcha();
+    }
+  }, [isAuthenticated]);
 
   // Admin Navigation Tabs
-  const [activeTab, setActiveTab] = useState<'create' | 'articles' | 'comments' | 'settings'>('create');
+  const [activeTab, setActiveTab] = useState<'create' | 'articles' | 'comments' | 'settings' | 'videos'>('create');
+
+  // Video management states
+  const [videosList, setVideosList] = useState<Video[]>(videos);
+  const [editingVideoId, setEditingVideoId] = useState<string | null>(null);
+  const [videoTitle, setVideoTitle] = useState('');
+  const [videoUrl, setVideoUrl] = useState('');
+  const [videoDescription, setVideoDescription] = useState('');
+  const [videoThumbnailUrl, setVideoThumbnailUrl] = useState('');
+  const [savingVideo, setSavingVideo] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [uploadingVideoThumb, setUploadingVideoThumb] = useState(false);
+
+  useEffect(() => {
+    setVideosList(videos);
+  }, [videos]);
 
   // Article Form State
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -121,12 +195,34 @@ export default function AdminPanel({ articles, settings, onRefreshAll, onClose }
   const [aboutText, setAboutText] = useState(settings.aboutText);
   const [contactEmail, setContactEmail] = useState(settings.contactEmail);
   const [adminPasscode, setAdminPasscode] = useState(settings.adminPasscode);
+  const [adminUsername, setAdminUsername] = useState(settings.adminUsername || 'admin');
+  const [adminRouteSlug, setAdminRouteSlug] = useState(settings.adminRouteSlug || 'soraatgir-secure-panel');
+  const [customScripts, setCustomScripts] = useState(settings.customScripts || '');
+  const [geminiApiKey, setGeminiApiKey] = useState(settings.geminiApiKey || '');
+  const [faviconUrl, setFaviconUrl] = useState(settings.faviconUrl || '');
+  const [logoUrl, setLogoUrl] = useState(settings.logoUrl || '');
+  const [uploadingFavicon, setUploadingFavicon] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
 
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   // Rich Editor & SEO Analysis State
   const [editorMode, setEditorMode] = useState<'edit' | 'preview'>('edit');
   const [seoKeyword, setSeoKeyword] = useState('');
+
+  // Rich Text Editor Helpers Dialog States
+  const [linkModalOpen, setLinkModalOpen] = useState(false);
+  const [linkUrl, setLinkUrl] = useState('');
+  const [linkText, setLinkText] = useState('');
+
+  const [imageModalOpen, setImageModalOpen] = useState(false);
+  const [imageUrlInput, setImageUrlInput] = useState('');
+  const [imageAltInput, setImageAltInput] = useState('');
+  const [imageFileUploading, setImageFileUploading] = useState(false);
+
+  const [tableModalOpen, setTableModalOpen] = useState(false);
+  const [tableRows, setTableRows] = useState(3);
+  const [tableCols, setTableCols] = useState(3);
 
   // Word count and reading time helpers
   const wordCount = content.trim() ? content.trim().split(/\s+/).length : 0;
@@ -160,6 +256,64 @@ export default function AdminPanel({ articles, settings, onRefreshAll, onClose }
     }, 10);
   };
 
+  const handleInsertLinkSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!linkUrl) return;
+    const textarea = document.getElementById('article-content-textarea') as HTMLTextAreaElement;
+    const start = textarea?.selectionStart || 0;
+    const end = textarea?.selectionEnd || 0;
+    const selectedText = textarea ? textarea.value.substring(start, end) : '';
+    
+    if (selectedText) {
+      insertAtCursor('[', `](${linkUrl})`);
+    } else {
+      insertAtCursor(`[${linkText || linkUrl}](${linkUrl})`);
+    }
+    setLinkModalOpen(false);
+    setLinkUrl('');
+    setLinkText('');
+  };
+
+  const handleInsertImageSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!imageUrlInput) return;
+    insertAtCursor(`\n![${imageAltInput || 'توضیح تصویر'}](${imageUrlInput})\n`);
+    setImageModalOpen(false);
+    setImageUrlInput('');
+    setImageAltInput('');
+  };
+
+  const handleInsertTableSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const rows = Math.max(1, Math.min(20, tableRows));
+    const cols = Math.max(1, Math.min(10, tableCols));
+    
+    let tableMarkdown = '\n';
+    // Header
+    tableMarkdown += '|';
+    for (let c = 1; c <= cols; c++) {
+      tableMarkdown += ` ستون ${c} |`;
+    }
+    tableMarkdown += '\n|';
+    for (let c = 1; c <= cols; c++) {
+      tableMarkdown += '---------|';
+    }
+    tableMarkdown += '\n';
+    
+    // Rows
+    for (let r = 1; r <= rows; r++) {
+      tableMarkdown += '|';
+      for (let c = 1; c <= cols; c++) {
+        tableMarkdown += ` خانه ${r}-${c} |`;
+      }
+      tableMarkdown += '\n';
+    }
+    tableMarkdown += '\n';
+    
+    insertAtCursor(tableMarkdown);
+    setTableModalOpen(false);
+  };
+
   // Auto-generate slug from title for new articles if not manually edited
   useEffect(() => {
     if (!editingId && !isSlugManuallyEdited) {
@@ -175,14 +329,32 @@ export default function AdminPanel({ articles, settings, onRefreshAll, onClose }
     }
   }, [settings.customCategories]);
 
-  // Check auth against setting on submission
-  const handleLogin = (e: React.FormEvent) => {
+  // Secure server-side login validation
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (passcode === settings.adminPasscode) {
-      setIsAuthenticated(true);
-      setAuthError('');
-    } else {
-      setAuthError('رمز عبور وارد شده اشتباه است. لطفاً دوباره تلاش کنید.');
+    setAuthError('');
+    try {
+      const res = await fetch('/api/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username,
+          password,
+          captchaId,
+          captchaAnswer
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setIsAuthenticated(true);
+        setAuthError('');
+      } else {
+        setAuthError(data.error || 'کد امنیتی یا رمز عبور اشتباه است.');
+        loadCaptcha(); // load new captcha on failure
+      }
+    } catch (err) {
+      setAuthError('خطا در ارتباط با سرور. لطفاً مجدداً تلاش کنید.');
+      loadCaptcha();
     }
   };
 
@@ -208,6 +380,98 @@ export default function AdminPanel({ articles, settings, onRefreshAll, onClose }
   const showNotification = (type: 'success' | 'error', message: string) => {
     setNotification({ type, message });
     setTimeout(() => setNotification(null), 5000);
+  };
+
+  const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    const file = files[0];
+    setUploadingImage(true);
+    try {
+      const url = await uploadImage(file);
+      setImageUrl(url);
+      showNotification('success', 'تصویر با موفقیت در همین سایت بارگذاری شد!');
+    } catch (err: any) {
+      console.error(err);
+      showNotification('error', err.message || 'خطا در بارگذاری فایل تصویر.');
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
+  const handleVideoThumbFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    const file = files[0];
+    setUploadingVideoThumb(true);
+    try {
+      const url = await uploadImage(file);
+      setVideoThumbnailUrl(url);
+      showNotification('success', 'تصویر پیش‌نمایش ویدیو با موفقیت بارگذاری شد!');
+    } catch (err: any) {
+      console.error(err);
+      showNotification('error', err.message || 'خطا در بارگذاری تصویر پیش‌نمایش.');
+    } finally {
+      setUploadingVideoThumb(false);
+    }
+  };
+
+  const handleSaveVideo = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!videoTitle.trim() || !videoUrl.trim()) {
+      showNotification('error', 'لطفاً عنوان ویدیو و لینک ویدیو را وارد کنید.');
+      return;
+    }
+    setSavingVideo(true);
+    try {
+      await saveVideo({
+        id: editingVideoId || undefined,
+        title: videoTitle.trim(),
+        videoUrl: videoUrl.trim(),
+        description: videoDescription.trim(),
+        thumbnailUrl: videoThumbnailUrl.trim() || undefined,
+        createdAt: editingVideoId ? undefined : Date.now()
+      });
+      showNotification('success', editingVideoId ? 'ویدیو با موفقیت ویرایش شد.' : 'ویدیو جدید با موفقیت منتشر شد.');
+      
+      // Reset form
+      setEditingVideoId(null);
+      setVideoTitle('');
+      setVideoUrl('');
+      setVideoDescription('');
+      setVideoThumbnailUrl('');
+      
+      // Refresh both states
+      onRefreshAll();
+    } catch (err) {
+      console.error(err);
+      showNotification('error', 'خطایی در ذخیره ویدیو رخ داد.');
+    } finally {
+      setSavingVideo(false);
+    }
+  };
+
+  const handleEditVideoClick = (v: Video) => {
+    setEditingVideoId(v.id);
+    setVideoTitle(v.title);
+    setVideoUrl(v.videoUrl);
+    setVideoDescription(v.description || '');
+    setVideoThumbnailUrl(v.thumbnailUrl || '');
+    // Scroll to the top of the tab container or form
+    const formElem = document.getElementById('video-form-header');
+    if (formElem) formElem.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const handleDeleteVideo = async (id: string) => {
+    if (!window.confirm('آیا از حذف این ویدیو اطمینان دارید؟')) return;
+    try {
+      await deleteVideo(id);
+      showNotification('success', 'ویدیو با موفقیت حذف شد.');
+      onRefreshAll();
+    } catch (err) {
+      console.error(err);
+      showNotification('error', 'خطایی در حذف ویدیو رخ داد.');
+    }
   };
 
   // AI Generation Trigger
@@ -238,7 +502,7 @@ export default function AdminPanel({ articles, settings, onRefreshAll, onClose }
       setCategory(data.category || aiCategory);
       setShortDescription(data.shortDescription || '');
       setContent(data.content || '');
-      setAuthor(data.author || 'هوش مصنوعی سرعت');
+      setAuthor(data.author || 'هوش مصنوعی سرعت‌گیر');
       
       if (data.specs) {
         setSpecs({
@@ -398,7 +662,13 @@ export default function AdminPanel({ articles, settings, onRefreshAll, onClose }
         aboutText,
         contactEmail,
         adminPasscode,
-        customCategories: customCats
+        customCategories: customCats,
+        geminiApiKey,
+        faviconUrl,
+        logoUrl,
+        adminUsername,
+        adminRouteSlug,
+        customScripts
       });
       showNotification('success', 'تنظیمات سایت و دسته‌بندی‌ها با موفقیت بروزرسانی شد.');
       onRefreshAll();
@@ -425,25 +695,69 @@ export default function AdminPanel({ articles, settings, onRefreshAll, onClose }
           </div>
           
           <h1 className="text-xl font-black text-white mb-2">ورود به پنل مدیریت مجله</h1>
-          <p className="text-xs text-slate-400 font-medium mb-6">برای انتشار مقاله و دسترسی به تنظیمات، رمز عبور را وارد کنید</p>
+          <p className="text-xs text-slate-400 font-medium mb-6">جهت انتشار مقالات و دسترسی به تنظیمات امنیتی، هویت خود را تایید کنید</p>
 
           <form onSubmit={handleLogin} className="space-y-4 text-right">
+            <div>
+              <label className="block text-xs font-bold text-slate-300 mb-1.5">نام کاربری مدیریت *</label>
+              <input
+                type="text"
+                required
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="نام کاربری (پیش‌فرض: admin)"
+                className="w-full rounded-xl bg-slate-950 border border-slate-800 px-4 py-3 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-blue-500 text-left font-mono"
+                id="admin-username-input"
+              />
+            </div>
+
             <div>
               <label className="block text-xs font-bold text-slate-300 mb-1.5">رمز عبور مدیریت *</label>
               <input
                 type="password"
                 required
-                value={passcode}
-                onChange={(e) => setPasscode(e.target.value)}
-                placeholder="رمز عبور پیش‌فرض: 123456"
-                className="w-full rounded-xl bg-slate-950 border border-slate-800 px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 text-center font-mono tracking-widest"
-                id="admin-passcode-input"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="رمز عبور (پیش‌فرض: 123456)"
+                className="w-full rounded-xl bg-slate-950 border border-slate-800 px-4 py-3 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-blue-500 text-left font-mono"
+                id="admin-password-input"
               />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-300 mb-1.5">عبارت محاسباتی امنیتی *</label>
+              <div className="flex gap-2 items-stretch">
+                <input
+                  type="text"
+                  required
+                  value={captchaAnswer}
+                  onChange={(e) => setCaptchaAnswer(e.target.value)}
+                  placeholder="پاسخ به عدد"
+                  className="flex-1 rounded-xl bg-slate-950 border border-slate-800 px-4 py-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-blue-500 text-center font-mono"
+                  id="admin-captcha-answer-input"
+                />
+                <div className="flex items-center gap-1.5 bg-slate-950 border border-slate-800 rounded-xl px-2.5 relative overflow-hidden shrink-0">
+                  {captchaSvg ? (
+                    <div dangerouslySetInnerHTML={{ __html: captchaSvg }} className="h-10 w-[120px] flex items-center justify-center" />
+                  ) : (
+                    <div className="h-10 w-[120px] bg-slate-950 animate-pulse rounded" />
+                  )}
+                  <button
+                    type="button"
+                    onClick={loadCaptcha}
+                    disabled={loadingCaptcha}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 cursor-pointer transition-colors"
+                    title="تازه سازی کد امنیتی"
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 ${loadingCaptcha ? 'animate-spin' : ''}`} />
+                  </button>
+                </div>
+              </div>
             </div>
 
             {authError && <p className="text-[11px] font-bold text-red-400 leading-relaxed text-center">{authError}</p>}
 
-            <div className="flex gap-3">
+            <div className="flex gap-3 pt-2">
               <button
                 type="button"
                 onClick={onClose}
@@ -507,6 +821,7 @@ export default function AdminPanel({ articles, settings, onRefreshAll, onClose }
             { id: 'create', label: 'افزودن مقاله جدید / هوش مصنوعی', icon: PlusCircle },
             { id: 'articles', label: 'مدیریت کل مقالات', icon: FileText },
             { id: 'comments', label: 'تعدیل دیدگاه‌های کاربران', icon: MessageSquare },
+            { id: 'videos', label: 'مدیریت ویدیوهای مجله', icon: Tv },
             { id: 'settings', label: 'تنظیمات عمومی سایت', icon: SettingsIcon },
           ].map((tab) => {
             const Icon = tab.icon;
@@ -548,7 +863,7 @@ export default function AdminPanel({ articles, settings, onRefreshAll, onClose }
                 <div className="flex items-center gap-2 mb-4 border-b border-slate-800 pb-3">
                   <Sparkles className="h-5.5 w-5.5 text-amber-400 animate-bounce" />
                   <div>
-                    <h2 className="text-base font-black text-white">هوش مصنوعی نویسنده سرعت (Gemini AI)</h2>
+                    <h2 className="text-base font-black text-white">هوش مصنوعی نویسنده سرعت‌گیر (Gemini AI)</h2>
                     <p className="text-[10px] text-slate-400">به کمک مدل قدرتمند جمینی، بلافاصله یک مقاله تخصصی فارسی بنویسید</p>
                   </div>
                 </div>
@@ -654,7 +969,7 @@ export default function AdminPanel({ articles, settings, onRefreshAll, onClose }
                         required
                         value={author}
                         onChange={(e) => setAuthor(e.target.value)}
-                        placeholder="نام خود یا هوش مصنوعی سرعت"
+                        placeholder="نام خود یا هوش مصنوعی سرعت‌گیر"
                         className="w-full rounded-xl bg-slate-950 border border-slate-800 px-4 py-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 text-right"
                       />
                     </div>
@@ -675,23 +990,50 @@ export default function AdminPanel({ articles, settings, onRefreshAll, onClose }
                       </select>
                     </div>
 
-                    {/* Image URL with Preset Selector */}
+                    {/* Image URL with Preset Selector and Direct File Upload */}
                     <div className="md:col-span-2">
-                      <label className="block text-xs font-bold text-slate-300 mb-1.5 flex items-center gap-1">
-                        <ImageIcon className="h-4 w-4 text-blue-400" />
-                        لینک تصویر کاور مقاله *
-                      </label>
-                      <input
-                        type="url"
-                        required
-                        value={imageUrl}
-                        onChange={(e) => setImageUrl(e.target.value)}
-                        placeholder="https://..."
-                        className="w-full rounded-xl bg-slate-950 border border-slate-800 px-4 py-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 text-left"
-                      />
+                      <div className="flex items-center gap-1.5 mb-2 border-b border-slate-800 pb-1.5">
+                        <ImageIcon className="h-4.5 w-4.5 text-blue-400" />
+                        <span className="text-xs font-black text-slate-200">انتخاب یا بارگذاری تصویر کاور مقاله *</span>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* Option A: Direct File Upload */}
+                        <div className="bg-slate-950/40 border border-slate-800/80 rounded-2xl p-4 flex flex-col justify-center items-center relative hover:border-blue-500/40 transition-all min-h-[110px]">
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={handleImageFileChange}
+                            disabled={uploadingImage}
+                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                          />
+                          <div className="flex flex-col items-center justify-center text-center">
+                            <PlusCircle className={`h-6 w-6 mb-1.5 ${uploadingImage ? 'text-blue-500 animate-pulse' : 'text-slate-400'}`} />
+                            <span className="text-xs font-bold text-slate-200">
+                              {uploadingImage ? 'در حال آپلود...' : 'بارگذاری مستقیم تصویر جدید از دستگاه'}
+                            </span>
+                            <span className="text-[10px] text-slate-500 mt-1">
+                              فایل به صورت مستقیم روی سرور همین سایت ذخیره می‌شود
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Option B: Input URL or current selected */}
+                        <div className="space-y-2 flex flex-col justify-center">
+                          <label className="block text-[10px] font-black text-slate-400">آدرس تصویر (تولید شده یا وارد شده دستی):</label>
+                          <input
+                            type="text"
+                            required
+                            value={imageUrl}
+                            onChange={(e) => setImageUrl(e.target.value)}
+                            placeholder="آدرس تصویر یا نام فایل بارگذاری شده..."
+                            className="w-full rounded-xl bg-slate-950 border border-slate-800 px-3.5 py-3 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-blue-500 text-left font-mono"
+                          />
+                        </div>
+                      </div>
                       
                       {/* Presets Grid */}
-                      <div className="mt-3">
+                      <div className="mt-4">
                         <span className="block text-[10px] font-bold text-slate-400 mb-2">یا انتخاب تصاویر باکیفیت خودرویی پیشنهادی:</span>
                         <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
                           {PRESET_IMAGES.map((img, i) => {
@@ -772,88 +1114,310 @@ export default function AdminPanel({ articles, settings, onRefreshAll, onClose }
                       {editorMode === 'edit' ? (
                         <div className="space-y-3">
                           {/* Rich Formatting Toolbar */}
-                          <div className="flex flex-wrap items-center gap-1 p-2 bg-slate-950 border border-slate-850 rounded-xl" id="wordpress-toolbar">
-                            <button
-                              type="button"
-                              onClick={() => insertAtCursor('## ')}
-                              className="px-2.5 py-1.5 text-[10px] font-black text-slate-300 hover:text-white hover:bg-slate-800 rounded transition cursor-pointer"
-                              title="تیتر سطح ۲"
-                            >
-                              H2
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => insertAtCursor('### ')}
-                              className="px-2.5 py-1.5 text-[10px] font-black text-slate-300 hover:text-white hover:bg-slate-800 rounded transition cursor-pointer"
-                              title="تیتر سطح ۳"
-                            >
-                              H3
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => insertAtCursor('- ')}
-                              className="px-2.5 py-1.5 text-[10px] font-black text-slate-300 hover:text-white hover:bg-slate-800 rounded transition cursor-pointer"
-                              title="لیست بالت"
-                            >
-                              • لیست بالت
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => insertAtCursor('> ')}
-                              className="px-2.5 py-1.5 text-[10px] font-black text-slate-300 hover:text-white hover:bg-slate-800 rounded transition cursor-pointer"
-                              title="نقل قول"
-                            >
-                              ” نقل قول
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => insertAtCursor('\n---\n')}
-                              className="px-2.5 py-1.5 text-[10px] font-black text-slate-300 hover:text-white hover:bg-slate-800 rounded transition cursor-pointer"
-                              title="خط جدا کننده"
-                            >
-                              — جدا کننده
-                            </button>
-                            <div className="h-5 w-[1px] bg-slate-800 mx-1"></div>
-                            
-                            {/* Pro Block helper */}
-                            <button
-                              type="button"
-                              onClick={() => insertAtCursor('➕ نقاط قوت: ')}
-                              className="px-2.5 py-1.5 text-[10px] font-black text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 rounded transition cursor-pointer"
-                              title="نقطه قوت"
-                            >
-                              ➕ مزیت
-                            </button>
-                            {/* Con Block helper */}
-                            <button
-                              type="button"
-                              onClick={() => insertAtCursor('➖ نقاط ضعف: ')}
-                              className="px-2.5 py-1.5 text-[10px] font-black text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 rounded transition cursor-pointer"
-                              title="نقطه ضعف"
-                            >
-                              ➖ عیب
-                            </button>
-                            {/* Key Alert helper */}
-                            <button
-                              type="button"
-                              onClick={() => insertAtCursor('💡 نکته کلیدی: ')}
-                              className="px-2.5 py-1.5 text-[10px] font-black text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 rounded transition cursor-pointer"
-                              title="نکته کلیدی"
-                            >
-                              💡 نکته
-                            </button>
-                            <div className="h-5 w-[1px] bg-slate-800 mx-1"></div>
+                          <div className="space-y-2">
+                            <div className="flex flex-wrap items-center gap-1.5 p-2 bg-slate-900 border border-slate-800 rounded-xl" id="wordpress-toolbar" dir="rtl">
+                              {/* Headers */}
+                              <button
+                                type="button"
+                                onClick={() => insertAtCursor('## ')}
+                                className="p-1.5 text-xs font-bold text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1"
+                                title="تیتر بزرگ (H2)"
+                              >
+                                <Heading2 className="h-4 w-4" />
+                                <span className="hidden sm:inline text-[10px]">تیتر بزرگ</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => insertAtCursor('### ')}
+                                className="p-1.5 text-xs font-bold text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1"
+                                title="تیتر متوسط (H3)"
+                              >
+                                <Heading3 className="h-4 w-4" />
+                                <span className="hidden sm:inline text-[10px]">تیتر متوسط</span>
+                              </button>
 
-                            {/* Preset block layout generator */}
-                            <button
-                              type="button"
-                              onClick={() => insertAtCursor('\n### نقد و بررسی کارشناس سرعت\n> طراحی بدنه فوق‌العاده آیرودینامیک به همراه پیشرانه الکتریکی با گشتاور آنی بالا از ویژگی‌های بارز این مدل است.\n\n➕ شتاب صفر تا صد و قدرت بی نظیر پیشرانه\n➕ سیستم تعلیق تطبیقی مجهز به هوش مصنوعی\n➖ قیمت تمام شده جهانی بالا\n\n💡 نکته کلیدی: مهندسی این مدل نشان‌دهنده مسیر آینده سوپراسپرت‌های الکتریکی است.\n')}
-                              className="px-2.5 py-1.5 text-[10px] font-black text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 rounded transition flex items-center gap-1 cursor-pointer"
-                              title="قالب آماده نقد و بررسی"
-                            >
-                              <Sparkles className="h-3.5 w-3.5" />
-                              <span>درج قالب نقد و بررسی وردپرسی</span>
-                            </button>
+                              <div className="h-4 w-[1px] bg-slate-800 mx-0.5"></div>
+
+                              {/* Core Formatting */}
+                              <button
+                                type="button"
+                                onClick={() => insertAtCursor('**', '**')}
+                                className="p-1.5 text-xs font-bold text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-all cursor-pointer flex items-center justify-center"
+                                title="ضخیم (Bold)"
+                              >
+                                <Bold className="h-4 w-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => insertAtCursor('*', '*')}
+                                className="p-1.5 text-xs font-bold text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-all cursor-pointer flex items-center justify-center"
+                                title="مورب (Italic)"
+                              >
+                                <Italic className="h-4 w-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => insertAtCursor('`', '`')}
+                                className="p-1.5 text-xs font-bold text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-all cursor-pointer flex items-center justify-center"
+                                title="کد درون‌خطی"
+                              >
+                                <Code className="h-4 w-4" />
+                              </button>
+
+                              <div className="h-4 w-[1px] bg-slate-800 mx-0.5"></div>
+
+                              {/* Lists & Quotes */}
+                              <button
+                                type="button"
+                                onClick={() => insertAtCursor('- ')}
+                                className="p-1.5 text-xs font-bold text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1"
+                                title="لیست نشانه‌دار"
+                              >
+                                <ListIcon className="h-4 w-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => insertAtCursor('1. ')}
+                                className="p-1.5 text-xs font-bold text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1"
+                                title="لیست شماره‌دار"
+                              >
+                                <ListOrdered className="h-4 w-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => insertAtCursor('> ')}
+                                className="p-1.5 text-xs font-bold text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1"
+                                title="نقل قول (Blockquote)"
+                              >
+                                <QuoteIcon className="h-4 w-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => insertAtCursor('\n---\n')}
+                                className="p-1.5 text-xs font-bold text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-all cursor-pointer flex items-center justify-center"
+                                title="خط جدا کننده"
+                              >
+                                <Minus className="h-4 w-4" />
+                              </button>
+
+                              <div className="h-4 w-[1px] bg-slate-800 mx-0.5"></div>
+
+                              {/* Dynamic Interactive Components */}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setLinkModalOpen(!linkModalOpen);
+                                  setImageModalOpen(false);
+                                  setTableModalOpen(false);
+                                }}
+                                className={`p-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                                  linkModalOpen ? 'bg-blue-600 text-white' : 'text-blue-400 hover:text-blue-300 hover:bg-slate-800'
+                                }`}
+                                title="درج لینک"
+                              >
+                                <LinkIcon className="h-4 w-4" />
+                                <span className="text-[10px]">درج لینک</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setImageModalOpen(!imageModalOpen);
+                                  setLinkModalOpen(false);
+                                  setTableModalOpen(false);
+                                }}
+                                className={`p-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                                  imageModalOpen ? 'bg-indigo-600 text-white' : 'text-indigo-400 hover:text-indigo-300 hover:bg-slate-800'
+                                }`}
+                                title="درج تصویر (آپلود / آدرس)"
+                              >
+                                <ImageIcon className="h-4 w-4" />
+                                <span className="text-[10px]">درج تصویر</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setTableModalOpen(!tableModalOpen);
+                                  setLinkModalOpen(false);
+                                  setImageModalOpen(false);
+                                }}
+                                className={`p-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                                  tableModalOpen ? 'bg-teal-600 text-white' : 'text-teal-400 hover:text-teal-300 hover:bg-slate-800'
+                                }`}
+                                title="درج جدول"
+                              >
+                                <TableIcon className="h-4 w-4" />
+                                <span className="text-[10px]">درج جدول</span>
+                              </button>
+
+                              <div className="h-4 w-[1px] bg-slate-800 mx-0.5"></div>
+
+                              {/* Custom Car Badges / Quick helpers */}
+                              <button
+                                type="button"
+                                onClick={() => insertAtCursor('➕ نقاط قوت: ')}
+                                className="px-2 py-1 text-[10px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 rounded-lg transition cursor-pointer"
+                                title="افزودن مزیت"
+                              >
+                                ➕ مزیت
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => insertAtCursor('➖ نقاط ضعف: ')}
+                                className="px-2 py-1 text-[10px] font-bold text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 rounded-lg transition cursor-pointer"
+                                title="افزودن عیب"
+                              >
+                                ➖ عیب
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => insertAtCursor('💡 نکته کلیدی: ')}
+                                className="px-2 py-1 text-[10px] font-bold text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 rounded-lg transition cursor-pointer"
+                                title="افزودن نکته کلیدی"
+                              >
+                                💡 نکته
+                              </button>
+
+                              <div className="h-4 w-[1px] bg-slate-800 mx-0.5"></div>
+
+                              {/* Preset block layout generator */}
+                              <button
+                                type="button"
+                                onClick={() => insertAtCursor('\n### نقد و بررسی کارشناس سرعت‌گیر\n> طراحی بدنه فوق‌العاده آیرودینامیک به همراه پیشرانه الکتریکی با گشتاور آنی بالا از ویژگی‌های بارز این مدل است.\n\n➕ شتاب صفر تا صد و قدرت بی نظیر پیشرانه\n➕ سیستم تعلیق تطبیقی مجهز به هوش مصنوعی\n➖ قیمت تمام شده جهانی بالا\n\n💡 نکته کلیدی: مهندسی این مدل نشان‌دهنده مسیر آینده سوپراسپرت‌های الکتریکی است.\n')}
+                                className="px-2.5 py-1 text-[10px] font-black text-violet-400 hover:text-violet-300 hover:bg-violet-500/10 rounded-lg transition flex items-center gap-1 cursor-pointer mr-auto"
+                                title="قالب آماده نقد و بررسی"
+                              >
+                                <Sparkles className="h-3.5 w-3.5" />
+                                <span>قالب بررسی فنی</span>
+                              </button>
+                            </div>
+
+                            {/* Active Helper Forms */}
+                            {linkModalOpen && (
+                              <form onSubmit={handleInsertLinkSubmit} className="flex flex-wrap items-center gap-2 p-3 bg-slate-900 border border-slate-800 rounded-xl text-right animate-in fade-in slide-in-from-top-1 duration-200" dir="rtl">
+                                <span className="text-[11px] font-bold text-slate-300">درج لینک جدید:</span>
+                                <input
+                                  type="text"
+                                  placeholder="عنوان یا متن نمایش لینک"
+                                  value={linkText}
+                                  onChange={(e) => setLinkText(e.target.value)}
+                                  className="rounded-lg bg-slate-950 border border-slate-850 px-3 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500 placeholder-slate-600"
+                                />
+                                <input
+                                  type="url"
+                                  required
+                                  placeholder="آدرس اینترنتی (https://...)"
+                                  value={linkUrl}
+                                  onChange={(e) => setLinkUrl(e.target.value)}
+                                  className="rounded-lg bg-slate-950 border border-slate-850 px-3 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500 font-mono text-left placeholder-slate-600"
+                                  dir="ltr"
+                                />
+                                <button type="submit" className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold cursor-pointer transition-colors">درج</button>
+                                <button type="button" onClick={() => setLinkModalOpen(false)} className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-bold cursor-pointer transition-colors">انصراف</button>
+                              </form>
+                            )}
+
+                            {imageModalOpen && (
+                              <div className="p-3 bg-slate-900 border border-slate-800 rounded-xl space-y-3 text-right animate-in fade-in slide-in-from-top-1 duration-200" dir="rtl">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[11px] font-bold text-slate-300">درج تصویر یا آپلود در رسانه وب‌سایت</span>
+                                  <button type="button" onClick={() => setImageModalOpen(false)} className="text-xs text-slate-500 hover:text-slate-300 cursor-pointer">بستن ×</button>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                  {/* Method 1: Upload */}
+                                  <div className="border border-dashed border-slate-800 hover:border-slate-700 rounded-xl p-4 flex flex-col items-center justify-center bg-slate-950 text-center relative group min-h-[110px] transition-colors">
+                                    <input
+                                      type="file"
+                                      accept="image/*"
+                                      onChange={async (e) => {
+                                        const file = e.target.files?.[0];
+                                        if (!file) return;
+                                        setImageFileUploading(true);
+                                        try {
+                                          const url = await uploadImage(file);
+                                          setImageUrlInput(url);
+                                          showNotification('success', 'تصویر آپلود شد و آدرس آن درج گردید.');
+                                        } catch (err) {
+                                          showNotification('error', 'خطا در آپلود فایل تصویر.');
+                                        } finally {
+                                          setImageFileUploading(false);
+                                        }
+                                      }}
+                                      className="absolute inset-0 opacity-0 cursor-pointer z-10"
+                                      disabled={imageFileUploading}
+                                    />
+                                    <UploadCloud className={`h-8 w-8 text-slate-500 mb-2 group-hover:text-indigo-400 transition-colors ${imageFileUploading ? 'animate-bounce text-indigo-400' : ''}`} />
+                                    <span className="text-[11px] font-bold text-slate-300">
+                                      {imageFileUploading ? 'در حال آپلود و ذخیره‌سازی...' : 'انتخاب یا رها کردن تصویر'}
+                                    </span>
+                                    <span className="text-[9px] text-slate-500 mt-1">خودکار در فضای ابری وب‌سایت ذخیره می‌شود</span>
+                                  </div>
+
+                                  {/* Method 2: Image URL */}
+                                  <form onSubmit={handleInsertImageSubmit} className="space-y-2">
+                                    <div>
+                                      <label className="block text-[10px] font-bold text-slate-400 mb-1">آدرس مستقیم تصویر (یا پس از آپلود خودکار پر می‌شود):</label>
+                                      <input
+                                        type="url"
+                                        placeholder="https://example.com/image.jpg"
+                                        value={imageUrlInput}
+                                        onChange={(e) => setImageUrlInput(e.target.value)}
+                                        className="w-full rounded-lg bg-slate-950 border border-slate-850 px-3 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500 font-mono text-left placeholder-slate-600"
+                                        dir="ltr"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="block text-[10px] font-bold text-slate-400 mb-1">توضیحات متنی تصویر (ALT سئو):</label>
+                                      <input
+                                        type="text"
+                                        placeholder="مثال: نمای جلوی پورشه تایکان برقی قرمز رنگ"
+                                        value={imageAltInput}
+                                        onChange={(e) => setImageAltInput(e.target.value)}
+                                        className="w-full rounded-lg bg-slate-950 border border-slate-850 px-3 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500 placeholder-slate-600"
+                                      />
+                                    </div>
+                                    <button
+                                      type="submit"
+                                      disabled={!imageUrlInput}
+                                      className="w-full py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-600 text-white rounded-lg text-xs font-bold cursor-pointer transition-colors"
+                                    >
+                                      تایید و درج در متن مقاله
+                                    </button>
+                                  </form>
+                                </div>
+                              </div>
+                            )}
+
+                            {tableModalOpen && (
+                              <form onSubmit={handleInsertTableSubmit} className="flex flex-wrap items-center gap-4 p-3 bg-slate-900 border border-slate-800 rounded-xl text-right animate-in fade-in slide-in-from-top-1 duration-200" dir="rtl">
+                                <span className="text-[11px] font-bold text-slate-300">ایجاد جدول مقایسه‌ای/داده‌ای جدید:</span>
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-[10px] text-slate-400">تعداد ردیف:</span>
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    max="20"
+                                    value={tableRows}
+                                    onChange={(e) => setTableRows(parseInt(e.target.value) || 1)}
+                                    className="w-12 rounded-lg bg-slate-950 border border-slate-850 px-2 py-1 text-xs text-white text-center font-mono focus:outline-none focus:border-blue-500"
+                                  />
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-[10px] text-slate-400">تعداد ستون:</span>
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    max="10"
+                                    value={tableCols}
+                                    onChange={(e) => setTableCols(parseInt(e.target.value) || 1)}
+                                    className="w-12 rounded-lg bg-slate-950 border border-slate-850 px-2 py-1 text-xs text-white text-center font-mono focus:outline-none focus:border-blue-500"
+                                  />
+                                </div>
+                                <button type="submit" className="px-3 py-1.5 bg-teal-600 hover:bg-teal-500 text-white rounded-lg text-xs font-bold cursor-pointer transition-colors">درج جدول در متن</button>
+                                <button type="button" onClick={() => setTableModalOpen(false)} className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-bold cursor-pointer transition-colors">انصراف</button>
+                              </form>
+                            )}
                           </div>
 
                           <textarea
@@ -1247,16 +1811,151 @@ export default function AdminPanel({ articles, settings, onRefreshAll, onClose }
                     ></textarea>
                   </div>
 
-                  {/* Admin Passcode */}
+                  {/* Admin Security Settings */}
                   <div>
-                    <label className="block text-xs font-bold text-slate-300 mb-1.5">رمز عبور ورود به پنل مدیریت *</label>
+                    <label className="block text-xs font-bold text-slate-300 mb-1.5">نام کاربری مدیریت *</label>
                     <input
                       type="text"
                       required
-                      value={adminPasscode}
-                      onChange={(e) => setAdminPasscode(e.target.value)}
-                      className="w-full rounded-xl bg-slate-950 border border-slate-800 px-4 py-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 text-center font-mono"
+                      value={adminUsername}
+                      onChange={(e) => setAdminUsername(e.target.value)}
+                      className="w-full rounded-xl bg-slate-950 border border-slate-800 px-4 py-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 text-left font-mono"
                     />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 mb-1.5">رمز عبور جدید مدیریت (اختیاری)</label>
+                    <input
+                      type="password"
+                      value={adminPasscode && adminPasscode.length === 64 ? '' : adminPasscode}
+                      onChange={(e) => setAdminPasscode(e.target.value)}
+                      placeholder={adminPasscode && adminPasscode.length === 64 ? 'برای حفظ رمز قبلی خالی بگذارید' : 'رمز عبور جدید'}
+                      className="w-full rounded-xl bg-slate-950 border border-slate-800 px-4 py-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 text-left font-mono"
+                    />
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="block text-xs font-bold text-slate-300 mb-1.5">آدرس اختصاصی پنل مدیریت *</label>
+                    <div className="flex gap-2">
+                      <span className="inline-flex items-center rounded-r-xl bg-slate-950 border-y border-r border-slate-800 px-3 text-xs text-slate-500 font-mono select-all">
+                        /{window.location.host || 'soraatgir.ir'}/
+                      </span>
+                      <input
+                        type="text"
+                        required
+                        value={adminRouteSlug}
+                        onChange={(e) => setAdminRouteSlug(e.target.value.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, ''))}
+                        className="flex-1 rounded-l-xl bg-slate-950 border border-slate-800 px-4 py-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 text-left font-mono"
+                        placeholder="soraatgir-secure-panel"
+                      />
+                    </div>
+                    <p className="text-[10px] text-slate-500 mt-1.5 text-right">
+                      این آدرس اختصاصی و خصوصی شما برای ورود به پنل مدیریت خواهد بود. آن را به خاطر بسپارید و با کسی به اشتراک نگذارید. (آدرس فعلی: {window.location.origin || ''}/{adminRouteSlug || 'soraatgir-secure-panel'})
+                    </p>
+                  </div>
+
+                  {/* Gemini API Key */}
+                  <div className="md:col-span-2">
+                    <label className="block text-xs font-bold text-slate-300 mb-1.5">کلید وب‌سرویس هوش مصنوعی Gemini (اختیاری)</label>
+                    <input
+                      type="text"
+                      value={geminiApiKey}
+                      onChange={(e) => setGeminiApiKey(e.target.value)}
+                      placeholder="AIzaSy..."
+                      className="w-full rounded-xl bg-slate-950 border border-slate-800 px-4 py-3 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-blue-500 text-left font-mono"
+                    />
+                    <p className="text-[10px] text-slate-500 mt-1.5 text-right">اگر خالی رها شود، از کلید API پیش‌فرض تنظیم شده روی سرور استفاده خواهد شد.</p>
+                  </div>
+
+                  {/* Favicon Settings */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 mb-1.5">آیکون مرورگر (Favicon)</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={faviconUrl}
+                        onChange={(e) => setFaviconUrl(e.target.value)}
+                        placeholder="آدرس آیکون یا آپلود کنید..."
+                        className="flex-1 rounded-xl bg-slate-950 border border-slate-800 px-4 py-3 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-blue-500 text-left"
+                      />
+                      <label className="flex items-center justify-center bg-slate-800 hover:bg-slate-700 text-white rounded-xl px-4 py-2 cursor-pointer text-xs font-bold transition-all whitespace-nowrap min-w-[90px]">
+                        {uploadingFavicon ? 'در حال...' : 'انتخاب فایل'}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            setUploadingFavicon(true);
+                            try {
+                              const url = await uploadImage(file);
+                              setFaviconUrl(url);
+                              showNotification('success', 'فاوآیکون با موفقیت آپلود شد!');
+                            } catch (err: any) {
+                              showNotification('error', err.message || 'خطا در آپلود فاوآیکون.');
+                            } finally {
+                              setUploadingFavicon(false);
+                            }
+                          }}
+                        />
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Logo Settings */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 mb-1.5">لوگوی بالای سایت</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={logoUrl}
+                        onChange={(e) => setLogoUrl(e.target.value)}
+                        placeholder="آدرس لوگو یا آپلود کنید..."
+                        className="flex-1 rounded-xl bg-slate-950 border border-slate-800 px-4 py-3 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-blue-500 text-left"
+                      />
+                      <label className="flex items-center justify-center bg-slate-800 hover:bg-slate-700 text-white rounded-xl px-4 py-2 cursor-pointer text-xs font-bold transition-all whitespace-nowrap min-w-[90px]">
+                        {uploadingLogo ? 'در حال...' : 'انتخاب فایل'}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            setUploadingLogo(true);
+                            try {
+                              const url = await uploadImage(file);
+                              setLogoUrl(url);
+                              showNotification('success', 'لوگو با موفقیت آپلود شد!');
+                            } catch (err: any) {
+                              showNotification('error', err.message || 'خطا در آپلود لوگو.');
+                            } finally {
+                              setUploadingLogo(false);
+                            }
+                          }}
+                        />
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Custom Header Scripts */}
+                  <div className="md:col-span-2 border-t border-slate-900 pt-5 mt-2">
+                    <label className="block text-xs font-bold text-slate-300 mb-1.5 flex items-center gap-1.5 justify-end">
+                      <span>اسکریپت‌ها و متا تگ‌های سفارشی (گوگل سرچ کنسول، آنالیتیکس و...)</span>
+                      <Code className="h-4 w-4 text-amber-500" />
+                    </label>
+                    <textarea
+                      rows={6}
+                      value={customScripts}
+                      onChange={(e) => setCustomScripts(e.target.value)}
+                      placeholder="<!-- کدهای تگ head سفارشی را اینجا قرار دهید -->&#10;<meta name='google-site-verification' content='...' />&#10;<script>...</script>"
+                      className="w-full rounded-xl bg-slate-950 border border-slate-800 px-4 py-3 text-xs text-slate-100 placeholder-slate-700 focus:outline-none focus:border-blue-500 text-left font-mono leading-relaxed"
+                      dir="ltr"
+                    ></textarea>
+                    <p className="text-[10px] text-slate-500 mt-1 text-right">
+                      کدهای وارد شده در این بخش به طور مستقیم به بخش <code className="font-mono text-emerald-500 bg-slate-950 px-1 py-0.5 rounded">&lt;head&gt;</code> تمام صفحات مجله افزوده می‌شوند تا اتصال به گوگل سرچ کنسول یا وب‌گذرها برقرار گردد.
+                    </p>
                   </div>
 
                 </div>
@@ -1376,6 +2075,189 @@ export default function AdminPanel({ articles, settings, onRefreshAll, onClose }
                   </button>
                 </div>
               </form>
+            </div>
+          )}
+
+          {/* TAB 5: VIDEOS MANAGEMENT */}
+          {activeTab === 'videos' && (
+            <div className="space-y-8">
+              {/* Form Card */}
+              <div className="bg-slate-900 rounded-3xl p-6 border border-slate-800 shadow-2xl" id="video-form">
+                <h2 id="video-form-header" className="text-base font-black text-white mb-6 pb-3 border-b border-slate-800 flex items-center gap-2">
+                  <Film className="h-5 w-5 text-[#ead8b1]" />
+                  <span>{editingVideoId ? 'ویرایش و اصلاح ویدیو' : 'انتشار ویدیو جدید'}</span>
+                </h2>
+
+                <form onSubmit={handleSaveVideo} className="space-y-6 text-right">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Title */}
+                    <div className="md:col-span-2">
+                      <label className="block text-xs font-bold text-slate-300 mb-1.5">عنوان ویدیو *</label>
+                      <input
+                        type="text"
+                        required
+                        value={videoTitle}
+                        onChange={(e) => setVideoTitle(e.target.value)}
+                        placeholder="یک عنوان جذاب برای ویدیو بنویسید"
+                        className="w-full rounded-xl bg-slate-950 border border-slate-800 px-4 py-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 text-right"
+                      />
+                    </div>
+
+                    {/* Video URL */}
+                    <div className="md:col-span-2">
+                      <label className="block text-xs font-bold text-slate-300 mb-1.5 flex items-center justify-between">
+                        <span>آدرس فایل یا لینک ویدیو (YouTube / Aparat / MP4) *</span>
+                        <span className="text-[10px] text-slate-500">(لینک امبد آپارات/یوتیوب، آدرس ویدیو معمولی یا پسوند .mp4 مستقیم)</span>
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={videoUrl}
+                        onChange={(e) => setVideoUrl(e.target.value)}
+                        placeholder="https://example.com/video.mp4  یا  آدرس امبد آپارات/یوتیوب"
+                        className="w-full rounded-xl bg-slate-950 border border-slate-800 px-4 py-3 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-blue-500 text-left font-mono"
+                        dir="ltr"
+                      />
+                    </div>
+
+                    {/* Thumbnail URL with Direct File Upload */}
+                    <div className="md:col-span-2">
+                      <div className="flex items-center gap-1.5 mb-2 border-b border-slate-800 pb-1.5">
+                        <ImageIcon className="h-4.5 w-4.5 text-blue-400" />
+                        <span className="text-xs font-black text-slate-200">انتخاب یا بارگذاری تصویر کاور ویدیو (Thumbnail)</span>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* Option A: Direct File Upload */}
+                        <div className="bg-slate-950/40 border border-slate-800/80 rounded-2xl p-4 flex flex-col justify-center items-center relative hover:border-blue-500/40 transition-all min-h-[110px]">
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={handleVideoThumbFileChange}
+                            disabled={uploadingVideoThumb}
+                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                          />
+                          <div className="flex flex-col items-center justify-center text-center">
+                            <PlusCircle className={`h-6 w-6 mb-1.5 ${uploadingVideoThumb ? 'text-blue-500 animate-pulse' : 'text-slate-400'}`} />
+                            <span className="text-xs font-bold text-slate-200">
+                              {uploadingVideoThumb ? 'در حال آپلود...' : 'بارگذاری مستقیم تصویر جدید از دستگاه'}
+                            </span>
+                            <span className="text-[10px] text-slate-500 mt-1">
+                              فایل به صورت مستقیم روی سرور همین سایت ذخیره می‌شود
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Option B: Input URL or current selected */}
+                        <div className="space-y-2 flex flex-col justify-center">
+                          <label className="block text-[10px] font-black text-slate-400">آدرس تصویر پیش‌نمایش ویدیو (وارد شده دستی یا آپلود شده):</label>
+                          <input
+                            type="text"
+                            value={videoThumbnailUrl}
+                            onChange={(e) => setVideoThumbnailUrl(e.target.value)}
+                            placeholder="آدرس تصویر یا نام فایل بارگذاری شده..."
+                            className="w-full rounded-xl bg-slate-950 border border-slate-800 px-3.5 py-3 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-blue-500 text-left font-mono"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Description */}
+                    <div className="md:col-span-2">
+                      <label className="block text-xs font-bold text-slate-300 mb-1.5">توضیحات کوتاه ویدیو</label>
+                      <textarea
+                        rows={3}
+                        value={videoDescription}
+                        onChange={(e) => setVideoDescription(e.target.value)}
+                        placeholder="خلاصه‌ای از آنچه مخاطب در این ویدیو تماشا خواهد کرد بنویسید..."
+                        className="w-full rounded-xl bg-slate-950 border border-slate-800 px-4 py-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 text-right"
+                      ></textarea>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end gap-3 pt-4 border-t border-slate-800">
+                    {editingVideoId && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingVideoId(null);
+                          setVideoTitle('');
+                          setVideoUrl('');
+                          setVideoDescription('');
+                          setVideoThumbnailUrl('');
+                        }}
+                        className="rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs px-6 py-3 transition-all cursor-pointer"
+                      >
+                        انصراف از ویرایش
+                      </button>
+                    )}
+                    <button
+                      type="submit"
+                      disabled={savingVideo}
+                      className="rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs px-6 py-3 shadow-lg border border-blue-400/20 transition-all cursor-pointer flex items-center gap-2"
+                    >
+                      {savingVideo ? <RefreshCw className="h-4 w-4 animate-spin" /> : null}
+                      <span>{editingVideoId ? 'ذخیره تغییرات ویدیو' : 'انتشار ویدیو در سایت'}</span>
+                    </button>
+                  </div>
+                </form>
+              </div>
+
+              {/* Videos List Card */}
+              <div className="bg-slate-900 rounded-3xl p-6 border border-slate-800 shadow-2xl">
+                <h2 className="text-base font-black text-white mb-6 pb-3 border-b border-slate-800">
+                  ویدیوهای فعال فعلی مجله ({videosList.length.toLocaleString('fa-IR')})
+                </h2>
+
+                {videosList.length === 0 ? (
+                  <div className="text-center py-12 bg-slate-950 rounded-2xl border border-slate-850">
+                    <Film className="h-12 w-12 text-slate-600 mx-auto mb-3 opacity-40 animate-pulse" />
+                    <p className="text-xs text-slate-400 font-bold">هیچ ویدیویی ثبت نشده است. همین حالا اولین ویدیو را اضافه کنید!</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {videosList.map((vid) => (
+                      <div key={vid.id} className="bg-slate-950 rounded-2xl p-4 border border-slate-850 flex gap-4 items-center justify-between text-right">
+                        <div className="flex items-center gap-3 overflow-hidden">
+                          <div className="h-16 w-24 rounded-lg bg-slate-900 border border-slate-800 overflow-hidden flex-shrink-0 relative">
+                            {vid.thumbnailUrl ? (
+                              <img src={vid.thumbnailUrl} alt={vid.title} className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+                            ) : (
+                              <div className="h-full w-full flex items-center justify-center text-slate-600">
+                                <Film className="h-6 w-6" />
+                              </div>
+                            )}
+                          </div>
+                          <div className="overflow-hidden">
+                            <h3 className="text-xs font-black text-white truncate">{vid.title}</h3>
+                            <p className="text-[10px] text-slate-400 truncate mt-1">{vid.description || 'بدون توضیحات'}</p>
+                            <span className="inline-block mt-2 text-[8px] font-mono bg-slate-900 text-blue-400 border border-blue-900/40 px-2 py-0.5 rounded-md">
+                              {vid.videoUrl.includes('.mp4') ? 'Direct MP4' : vid.videoUrl.includes('aparat') ? 'Aparat' : 'YouTube/Other'}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex gap-2 flex-shrink-0">
+                          <button
+                            onClick={() => handleEditVideoClick(vid)}
+                            className="h-8 w-8 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 flex items-center justify-center transition-all cursor-pointer"
+                            title="ویرایش ویدیو"
+                          >
+                            <Edit className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteVideo(vid.id)}
+                            className="h-8 w-8 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 flex items-center justify-center transition-all cursor-pointer"
+                            title="حذف ویدیو"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           )}
 

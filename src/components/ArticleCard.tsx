@@ -23,11 +23,11 @@ export default function ArticleCard({ article, onSelect }: ArticleCardProps) {
 
   const getCategoryColor = (category: string) => {
     switch (category) {
-      case 'news': return 'bg-blue-950/95 text-blue-300 border-blue-800';
-      case 'achievement': return 'bg-indigo-950/95 text-indigo-300 border-indigo-800';
-      case 'review': return 'bg-purple-950/95 text-purple-300 border-purple-800';
-      case 'electric': return 'bg-emerald-950/95 text-emerald-300 border-emerald-800';
-      default: return 'bg-slate-900/95 text-slate-200 border-slate-800';
+      case 'news': return 'bg-[#001224] text-[#6a9ab0] border-[#3a6d8c]/30';
+      case 'achievement': return 'bg-[#001224] text-[#ead8b1] border-[#ead8b1]/30';
+      case 'review': return 'bg-[#001224] text-sky-200 border-[#3a6d8c]/20';
+      case 'electric': return 'bg-[#001224] text-emerald-400 border-emerald-500/20';
+      default: return 'bg-[#001224] text-slate-300 border-white/5';
     }
   };
 
@@ -45,11 +45,11 @@ export default function ArticleCard({ article, onSelect }: ArticleCardProps) {
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: '-50px' }}
       transition={{ duration: 0.4 }}
-      className="group flex flex-col overflow-hidden rounded-2xl bg-slate-900 border border-slate-850 hover:border-slate-700 shadow-xl hover:shadow-2xl transition-all duration-300"
+      className="group flex flex-col overflow-hidden rounded-3xl bg-[#001f3f] border border-[#3a6d8c]/15 hover:border-[#ead8b1]/30 shadow-lg hover:shadow-2xl transition-all duration-300"
       id={`article-card-${article.id}`}
     >
       {/* Article Image Container */}
-      <div className="relative aspect-[16/10] overflow-hidden bg-slate-950">
+      <div className="relative aspect-[16/10] overflow-hidden bg-[#001224]">
         <img
           src={article.imageUrl || 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&q=80&w=600'}
           alt={article.title}
@@ -61,7 +61,7 @@ export default function ArticleCard({ article, onSelect }: ArticleCardProps) {
         <div className="absolute inset-0 bg-gradient-to-t from-slate-950/60 to-transparent"></div>
         
         {/* Category Floating Badge */}
-        <span className={`absolute top-4 right-4 flex items-center gap-1 px-3.5 py-1.5 text-xs font-black rounded-lg border shadow-lg ${getCategoryColor(article.category)}`}>
+        <span className={`absolute top-4 right-4 flex items-center gap-1 px-3 py-1.5 text-xs font-black rounded-lg border shadow-lg ${getCategoryColor(article.category)}`}>
           {article.categoryLabel}
         </span>
       </div>
@@ -72,17 +72,17 @@ export default function ArticleCard({ article, onSelect }: ArticleCardProps) {
         {/* Author & Date line */}
         <div className="flex items-center justify-between text-xs text-slate-300 mb-3.5 font-bold">
           <div className="flex items-center gap-1">
-            <User className="h-4 w-4 text-blue-400" />
+            <User className="h-4 w-4 text-[#6a9ab0]" />
             <span>{article.author}</span>
           </div>
           <div className="flex items-center gap-1">
-            <Calendar className="h-4 w-4 text-blue-400" />
+            <Calendar className="h-4 w-4 text-[#6a9ab0]" />
             <span>{formatDate(article.createdAt)}</span>
           </div>
         </div>
 
         {/* Title */}
-        <h3 className="text-lg font-black leading-snug text-white group-hover:text-blue-400 line-clamp-2 mb-2.5 transition-colors">
+        <h3 className="text-lg font-black leading-snug text-white group-hover:text-[#ead8b1] line-clamp-2 mb-2.5 transition-colors">
           {article.title}
         </h3>
 
@@ -92,7 +92,7 @@ export default function ArticleCard({ article, onSelect }: ArticleCardProps) {
         </p>
 
         {/* Spacer to push metrics to bottom */}
-        <div className="mt-auto pt-4 border-t border-slate-800/80 flex items-center justify-between">
+        <div className="mt-auto pt-4 border-t border-[#3a6d8c]/10 flex items-center justify-between">
           
           {/* Interaction stats */}
           <div className="flex items-center gap-3 text-xs text-slate-300 font-bold">
@@ -101,7 +101,7 @@ export default function ArticleCard({ article, onSelect }: ArticleCardProps) {
               <span>{article.views.toLocaleString('fa-IR')}</span>
             </span>
             <span className="flex items-center gap-1">
-              <Heart className="h-4 w-4 text-blue-400" />
+              <Heart className="h-4 w-4 text-[#ead8b1]" />
               <span>{article.likes.toLocaleString('fa-IR')}</span>
             </span>
           </div>
@@ -109,7 +109,7 @@ export default function ArticleCard({ article, onSelect }: ArticleCardProps) {
           {/* Action trigger */}
           <button
             onClick={() => onSelect(article)}
-            className="flex items-center gap-1 text-sm font-black text-blue-400 group-hover:translate-x-[-4px] transition-transform cursor-pointer"
+            className="flex items-center gap-1 text-sm font-black text-[#ead8b1] hover:text-[#ffffff] group-hover:translate-x-[-4px] transition-all cursor-pointer"
           >
             <span>ادامه مطلب</span>
             <ArrowLeft className="h-4 w-4" />

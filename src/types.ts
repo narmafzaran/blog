@@ -41,4 +41,20 @@ export interface SiteSettings {
   contactEmail: string;
   adminPasscode: string;
   customCategories?: { id: string; label: string; iconName?: string }[];
+  geminiApiKey?: string;
+  faviconUrl?: string;
+  logoUrl?: string;
+  adminUsername?: string;
+  adminRouteSlug?: string;
+  customScripts?: string;
 }
+
+export interface Video {
+  id: string;
+  title: string;
+  videoUrl: string; // Embed link (Aparat/YouTube) or MP4 URL
+  description?: string;
+  thumbnailUrl?: string; // Cover image or can fall back to general placeholder
+  createdAt: number;
+}
+
